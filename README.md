@@ -22,13 +22,13 @@ A robust, Dockerized tool that mirrors your local filesystem structure into a No
 
 Create a new Database in Notion with the following properties. **The names must match exactly:**
 
-| Property Name | Type | Description |
-| :--- | :--- | :--- |
-| **Name** | `Title` | The name of the file or folder. |
-| **RelativeID** | `Text` | Unique ID for sync (Do not edit manually). |
-| **Extension** | `Text` | File extension (e.g., `.pdf`, `FOLDER`). |
-| **MagicLink** | `URL` | Link to open the file locally. |
-| **Parent item** | `Relation` | **Important:** Create a Relation to *this same database*. Select "Use separate column for other relation". This enables the hierarchy. |
+| Property Name   | Type       | Description                                                                                                                            |
+| :-------------- | :--------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**        | `Title`    | The name of the file or folder.                                                                                                        |
+| **RelativeID**  | `Text`     | Unique ID for sync (Do not edit manually).                                                                                             |
+| **Extension**   | `Text`     | File extension (e.g., `.pdf`, `FOLDER`).                                                                                               |
+| **MagicLink**   | `URL`      | Link to open the file locally.                                                                                                         |
+| **Parent item** | `Relation` | **Important:** Create a Relation to _this same database_. Select "Use separate column for other relation". This enables the hierarchy. |
 
 > **Tip:** Enable "Sub-items" in your Database view options and link it to the `Parent item` property to see the nested folder structure.
 
@@ -45,6 +45,7 @@ Create a new Database in Notion with the following properties. **The names must 
 No need to install Python. Just run the container.
 
 ### 1. Build the Image
+
 ```bash
 docker build -t notion-uploader .
 ```
@@ -52,6 +53,7 @@ docker build -t notion-uploader .
 ### 2. Run the Sync
 
 **On Linux / macOS:**
+
 ```bash
 docker run --rm \
   -v "/path/to/your/folder:/data" \
@@ -62,6 +64,7 @@ docker run --rm \
 ```
 
 **On Windows (PowerShell):**
+
 ```powershell
 docker run --rm `
   -v "D:\Your\Folder:/data" `
@@ -78,12 +81,14 @@ docker run --rm `
 If you prefer running it directly:
 
 1.  **Install Dependencies:**
+
     ```bash
     pip install -r requirements.txt
     ```
 
 2.  **Configure Environment:**
     Create a `.env` file in the root directory:
+
     ```dotenv
     NOTION_TOKEN=secret_your_token_here
     NOTION_DATABASE_ID=your_database_id_here
