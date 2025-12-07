@@ -1,67 +1,117 @@
-# SantiFS (Notion Indexer) - Dockerized
+# Notion File Uploader
 
-A robust synchronization tool that mirrors your local filesystem structure into a Notion Database.
+A robust, Dockerized tool that mirrors your local filesystem structure into a Notion Database. It creates a "Digital Twin" of your hard drive in Notion, allowing you to search and organize your local files using Notion's powerful interface.
 
-## 🏗 Architecture & Design
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
+![Docker](https://img.shields.io/badge/docker-ready-green.svg)
 
-This project follows **Clean Architecture** principles and **SOLID** design patterns to ensure maintainability and scalability.
+## ✨ Features
 
-### Layers
+- **One-Way Sync:** Scans your local folder and updates Notion.
+- **Recursive Hierarchy:** Recreates your folder tree using Notion "Sub-items".
+- **Smart Updates:** Only updates changed files. Archives missing files.
+- **Magic Links:** Generates local `file://` links to open files directly (OS dependent).
+- **Clean Architecture:** Built with SOLID principles for reliability.
 
-1.  **Domain (`src/domain.py`)**:
-    - Contains core entities (`FileMeta`) and interfaces (`INotionRepository`, `IMagicLinkGenerator`).
-    - _Pattern:_ **Data Transfer Object (DTO)** for `FileMeta`.
-2.  **Application (`src/application/`)**:
-    - Contains business logic.
-    - `Synchronizer`: Orchestrates the sync process (Service Layer).
-    - `FileMetaFactory`: Creates domain objects (Factory Pattern).
-3.  **Infrastructure (`src/infrastructure/`)**:
-    - `NotionRepository`: Implements the repository interface using Notion API.
-    - _Pattern:_ **Repository Pattern** to decouple data access.
-    - _Pattern:_ **Adapter Pattern** to adapt Notion API to our domain interface.
+---
 
-### Documentation (CRC)
+## 🚀 Getting Started
 
-The code is fully documented using **CRC (Class-Responsibility-Collaborator)** cards within the docstrings of each class.
+### 1. Notion Setup (Crucial Step!)
 
-## 🐳 Docker Usage
+Create a new Database in Notion with the following properties. **The names must match exactly:**
 
-This tool is designed to run as a Docker container.
+| Property Name | Type | Description |
+| :--- | :--- | :--- |
+| **Name** | `Title` | The name of the file or folder. |
+| **RelativeID** | `Text` | Unique ID for sync (Do not edit manually). |
+| **Extension** | `Text` | File extension (e.g., `.pdf`, `FOLDER`). |
+| **MagicLink** | `URL` | Link to open the file locally. |
+| **Parent item** | `Relation` | **Important:** Create a Relation to *this same database*. Select "Use separate column for other relation". This enables the hierarchy. |
 
-### 1. Build Image
+> **Tip:** Enable "Sub-items" in your Database view options and link it to the `Parent item` property to see the nested folder structure.
 
+### 2. Get your Credentials
+
+1.  **Notion Token:** Go to [Notion My Integrations](https://www.notion.so/my-integrations), create a new integration, and copy the "Internal Integration Secret".
+2.  **Share Database:** Open your Database in Notion -> Click `...` (top right) -> `Connections` -> Add your new integration.
+3.  **Database ID:** Open your Database as a full page. The ID is the 32-character code in the URL: `https://notion.so/myworkspace/THIS_IS_THE_ID?v=...`
+
+---
+
+## 🐳 Usage with Docker (Recommended)
+
+No need to install Python. Just run the container.
+
+### 1. Build the Image
 ```bash
-docker build -t santifs .
+docker build -t notion-uploader .
 ```
 
-### 2. Run Container
+### 2. Run the Sync
 
-You need to mount the directory you want to index to `/data` (or whatever path you set in ENV) and provide the `.env` file.
-
+**On Linux / macOS:**
 ```bash
 docker run --rm \
-  -v "D:/Data:/data" \
-  -e NOTION_TOKEN="secret_..." \
-  -e NOTION_DATABASE_ID="your_db_id" \
+  -v "/path/to/your/folder:/data" \
+  -e NOTION_TOKEN="secret_your_token_here" \
+  -e NOTION_DATABASE_ID="your_database_id_here" \
   -e WATCH_DIR="/data" \
-  santifs
+  notion-uploader
 ```
 
-## 🛠 Manual Installation (Python)
+**On Windows (PowerShell):**
+```powershell
+docker run --rm `
+  -v "D:\Your\Folder:/data" `
+  -e NOTION_TOKEN="secret_your_token_here" `
+  -e NOTION_DATABASE_ID="your_database_id_here" `
+  -e WATCH_DIR="/data" `
+  notion-uploader
+```
 
-1.  Install Python 3.11+.
-2.  Install dependencies: `pip install -r requirements.txt`
-3.  Configure `.env`.
-4.  Run: `python main.py`
+---
 
-## 🔄 Migration to n8n
+## 🛠 Manual Usage (Python)
 
-This Python project serves as the "Legacy Core" or "Reference Implementation".
-To migrate to n8n:
+If you prefer running it directly:
 
-1.  Use the workflows provided in `n8n_migration/`.
-2.  The logic in `src/infrastructure/notion_adapter.py` (specifically recursive folder creation) is the most complex part to replicate in n8n.
+1.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2.  **Configure Environment:**
+    Create a `.env` file in the root directory:
+    ```dotenv
+    NOTION_TOKEN=secret_your_token_here
+    NOTION_DATABASE_ID=your_database_id_here
+    WATCH_DIR=D:/Path/To/Sync
+    DEVICE_NAME=MyLaptop
+    ```
+
+3.  **Run:**
+    ```bash
+    python main.py
+    ```
+
+---
+
+## 🏗 Architecture
+
+For developers interested in the code structure:
+
+- **Domain Layer:** Pure Python entities (`FileMeta`) and interfaces.
+- **Application Layer:** Business logic (`Synchronizer`, `Factory`).
+- **Infrastructure Layer:** Notion API implementation (`NotionRepository`).
+
+The project follows **Clean Architecture** and **SOLID** principles. Each class is documented with **CRC Cards** in the source code.
+
+## 🔄 n8n Migration
+
+This repository includes a `n8n_migration/` folder with JSON workflows to replicate this functionality using **n8n** (a workflow automation tool), for those who prefer a low-code approach.
 
 ## 📄 License
 
-MIT
+This project is licensed under the MIT License.
