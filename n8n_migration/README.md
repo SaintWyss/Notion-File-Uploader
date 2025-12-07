@@ -1,55 +1,66 @@
-# Migración a n8n
+# Migración a n8n (SantiFS)
 
-Este documento explica cómo reemplazar el script de Python con flujos de trabajo de n8n.
+Este documento detalla cómo reemplazar el script de Python con un flujo de trabajo de **n8n**.
 
-## Requisitos
+## 📋 Prerrequisitos
 
-1.  **Node.js** instalado en tu PC.
-2.  **n8n** instalado globalmente:
-    ```powershell
-    npm install n8n -g
-    ```
+1.  **n8n instalado:** Preferiblemente usando Docker.
+2.  **Acceso a archivos:** n8n debe tener acceso a la carpeta que quieres indexar.
 
-## Configuración
+## 🐳 Configuración con Docker (Recomendado)
 
-### 1. Iniciar n8n
+Para que n8n pueda "ver" tus archivos locales, debes montar el volumen al iniciar el contenedor.
 
-Abre una terminal (PowerShell) y ejecuta:
-
-```powershell
-n8n start --tunnel
+```bash
+docker run -it --rm \
+  --name n8n \
+  -p 5678:5678 \
+  -v "D:/Data:/data" \
+  -v ~/.n8n:/home/node/.n8n \
+  n8nio/n8n
 ```
+*Nota: Esto monta tu carpeta `D:/Data` en `/data` dentro del contenedor.*
 
-_El flag `--tunnel` es opcional, pero útil si quieres recibir webhooks externos. Para uso local, `n8n start` basta._
+## 📥 Importar el Workflow
 
-### 2. Importar Flujos de Trabajo
-
-1.  Abre tu navegador en `http://localhost:5678`.
+1.  Abre n8n (`http://localhost:5678`).
 2.  Crea un nuevo Workflow.
-3.  Ve al menú (tres puntos arriba a la derecha) -> **Import from File**.
-4.  Selecciona `workflow_opener.json` (este maneja la apertura de archivos).
-5.  Activa el workflow (Switch "Active" arriba a la derecha).
-6.  Repite el proceso para `workflow_indexer.json` (este maneja la sincronización).
+3.  Menú (arriba derecha) -> **Import from File**.
+4.  Selecciona `workflow_full_sync.json`.
 
-### 3. Configurar Credenciales de Notion
+## ⚙️ Configuración del Workflow
 
-1.  En n8n, ve a **Credentials**.
-2.  Busca "Notion API".
-3.  Pega tu `NOTION_TOKEN` (el que estaba en el archivo `.env`).
+Una vez importado, debes ajustar 3 cosas:
 
-### 4. Ajustar Nodos
+1.  **Credenciales de Notion:**
+    *   Haz doble clic en el nodo **Get Notion Pages**.
+    *   En "Credential for Notion API", selecciona "Create New" y pega tu Token.
+    *   En "Database ID", pega el ID de tu base de datos.
+    *   Repite esto para los nodos **Create Page**, **Update Page** y **Archive Page** (o copia y pega el ID).
 
-- **En el Workflow Indexer:**
-  - Abre el nodo **Local File Trigger**.
-  - Asegúrate de que `Path to Watch` sea `D:/Data`.
-  - Abre los nodos de **Notion** y selecciona tu credencial recién creada.
-  - Selecciona tu `Database ID` en los nodos de Notion (o pégalo manualmente si no carga la lista).
+2.  **Ruta de Archivos (Nodo "List Local Files"):**
+    *   El comando por defecto es para Linux/Docker:
+        `find /data -type f ...`
+    *   Si estás corriendo n8n en **Windows nativo** (sin Docker), cambia el comando a:
+        ```powershell
+        Get-ChildItem "D:\Data" -Recurse -File | Select-Object FullName, Name, Length | ConvertTo-Json -Compress
+        ```
 
-### 5. Ejecución
+3.  **Lógica de Comparación (Nodo "Compare Logic"):**
+    *   Abre el nodo de código.
+    *   Busca la línea `const WATCH_DIR = '/data';`.
+    *   Cámbiala si tu ruta de montaje es diferente (ej. `D:/Data` si usas Windows nativo).
 
-Una vez activados los workflows, n8n debe permanecer abierto (puedes minimizar la terminal) para que la sincronización funcione.
+## 🚀 Ejecución
 
-## Notas sobre Limitaciones en n8n
+1.  Haz clic en **Execute Workflow**.
+2.  El sistema:
+    *   Descargará el estado de Notion.
+    *   Listará tus archivos locales.
+    *   Comparará ambos.
+    *   Creará/Actualizará/Borrará lo necesario.
 
-- **Jerarquía Recursiva:** El workflow JSON incluido maneja la creación básica de archivos. La lógica recursiva de "crear carpeta padre si no existe" es compleja de implementar visualmente en un solo paso en n8n sin usar bucles complejos o múltiples llamadas API. El workflow actual asume una estructura plana o que las carpetas ya existen.
-- **Rendimiento:** n8n consume más RAM que el script de Python optimizado.
+## ⚠️ Limitaciones vs Python
+
+*   **Jerarquía Recursiva:** Este flujo crea los archivos en Notion, pero **NO crea automáticamente la estructura de carpetas padre** (Sub-items) si no existen. Implementar recursividad en n8n es complejo y requiere bucles avanzados. Este flujo asume una lista plana o que organizas las carpetas manualmente.
+*   **Rendimiento:** Para miles de archivos, n8n puede ser más lento que el script de Python optimizado.
