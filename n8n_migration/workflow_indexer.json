@@ -1,0 +1,184 @@
+{
+  "name": "SantiFS - Indexer",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerOn": "folder",
+        "path": "D:/Data",
+        "events": ["add", "change", "unlink"],
+        "options": {
+          "awaitWriteFinish": true,
+          "usePolling": true
+        }
+      },
+      "name": "Local File Trigger",
+      "type": "n8n-nodes-base.localFileTrigger",
+      "typeVersion": 1,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Configuración\nconst WATCH_DIR = 'D:/Data';\nconst WEBHOOK_BASE = 'http://localhost:5678/webhook/open?f=';\n\nconst path = $input.item.json.path;\nconst event = $input.item.json.event;\nconst isDir = $input.item.json.type === 'directory';\n\n// Calcular rutas relativas\nconst relativePath = path.replace(WATCH_DIR, '').replace(/^\\\\|^\\//, '').replace(/\\\\/g, '/');\nconst parentPath = relativePath.split('/').slice(0, -1).join('/');\nconst filename = relativePath.split('/').pop();\nconst extension = isDir ? 'FOLDER' : filename.split('.').pop();\n\n// Generar Link (No usamos base64 aquí para simplificar, o puedes agregarlo)\nconst magicLink = WEBHOOK_BASE + path.replace(/\\\\/g, '\\\\\\\\'); // Escape backslashes for URL\n\nreturn {\n  json: {\n    filename,\n    relativePath,\n    parentPath,\n    extension,\n    magicLink,\n    event,\n    isDir\n  }\n};"
+      },
+      "name": "Prepare Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": "2c27e319-2932-8082-becc-df394c25b661",
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "RelativeID|rich_text",
+              "condition": "equals",
+              "value": "={{$json.relativePath}}"
+            }
+          ]
+        }
+      },
+      "name": "Check Existing",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.event}}",
+              "value2": "unlink"
+            }
+          ]
+        }
+      },
+      "name": "Is Delete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [980, 300]
+    },
+    {
+      "parameters": {
+        "resource": "page",
+        "operation": "archive",
+        "pageId": "={{$node[\"Check Existing\"].json[\"id\"]}}"
+      },
+      "name": "Archive Page",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": "2c27e319-2932-8082-becc-df394c25b661",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{$node[\"Prepare Data\"].json[\"filename\"]}}"
+            },
+            {
+              "key": "RelativeID|rich_text",
+              "textContent": "={{$node[\"Prepare Data\"].json[\"relativePath\"]}}"
+            },
+            {
+              "key": "Extension|rich_text",
+              "textContent": "={{$node[\"Prepare Data\"].json[\"extension\"]}}"
+            },
+            {
+              "key": "MagicLink|url",
+              "url": "={{$node[\"Prepare Data\"].json[\"magicLink\"]}}"
+            }
+          ]
+        }
+      },
+      "name": "Create Page",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1200, 400]
+    },
+    {
+      "parameters": {
+        "resource": "page",
+        "operation": "update",
+        "pageId": "={{$node[\"Check Existing\"].json[\"id\"]}}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{$node[\"Prepare Data\"].json[\"filename\"]}}"
+            },
+            {
+              "key": "MagicLink|url",
+              "url": "={{$node[\"Prepare Data\"].json[\"magicLink\"]}}"
+            }
+          ]
+        }
+      },
+      "name": "Update Page",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1200, 600]
+    }
+  ],
+  "connections": {
+    "Local File Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data": {
+      "main": [
+        [
+          {
+            "node": "Check Existing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing": {
+      "main": [
+        [
+          {
+            "node": "Is Delete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Delete?": {
+      "main": [
+        [
+          {
+            "node": "Archive Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
