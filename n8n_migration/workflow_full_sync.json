@@ -23,22 +23,41 @@
     },
     {
       "parameters": {
-        "command": "find /data -type f -not -path '*/.*' -printf '{\"path\":\"%p\",\"name\":\"%f\",\"size\":%s},'"
+        "command": "find /data -type f -not -path '*/.*' -not -path '*/node_modules/*' > /home/node/filelist.txt"
       },
       "name": "List Local Files",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [460, 400],
-      "notes": "Si usas Windows nativo, cambia este comando por PowerShell: Get-ChildItem ... | ConvertTo-Json"
+      "notes": "Escribe en archivo para evitar error de Buffer"
     },
     {
       "parameters": {
-        "jsCode": "// Parse Local Files\n// The command returns a string with trailing comma, we fix it to be valid JSON array\nlet rawOutput = $items(\"List Local Files\")[0].json.stdout.trim();\nif (rawOutput.endsWith(',')) rawOutput = rawOutput.slice(0, -1);\nconst localFiles = JSON.parse(`[${rawOutput}]`);\n\n// Parse Notion Pages\nconst notionPages = $items(\"Get Notion Pages\");\nconst notionMap = new Map();\n\nnotionPages.forEach(item => {\n  const props = item.json.properties;\n  const relId = props.RelativeID?.rich_text?.[0]?.plain_text;\n  if (relId) notionMap.set(relId, item.json.id);\n});\n\n// Compare\nconst results = [];\nconst WATCH_DIR = '/data'; // Adjust based on mount\n\n// 1. Check Local Files (Create or Update)\nconst localIds = new Set();\n\nlocalFiles.forEach(file => {\n  // Calculate Relative ID\n  // Assuming path starts with /data\n  let relId = file.path;\n  if (relId.startsWith(WATCH_DIR)) {\n      relId = relId.slice(WATCH_DIR.length);\n  }\n  if (relId.startsWith('/')) relId = relId.slice(1);\n  \n  localIds.add(relId);\n  \n  const action = notionMap.has(relId) ? 'update' : 'create';\n  const pageId = notionMap.get(relId);\n  \n  results.push({\n    json: {\n      action,\n      filename: file.name,\n      relativePath: relId,\n      pageId,\n      magicLink: 'file://' + file.path\n    }\n  });\n});\n\n// 2. Check Missing (Delete)\nnotionMap.forEach((pageId, relId) => {\n  if (!localIds.has(relId)) {\n    results.push({\n      json: {\n        action: 'delete',\n        relativePath: relId,\n        pageId\n      }\n    });\n  }\n});\n\nreturn results;"
+        "filePath": "/home/node/filelist.txt",
+        "dataPropertyName": "data"
+      },
+      "name": "Read File List",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [600, 400]
+    },
+    {
+      "parameters": {
+        "mode": "wait"
+      },
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Local Files from Binary\n// n8n stores binary as base64 in .data property\ntry {\n  const binaryItem = $items(\"Read File List\")[0].binary.data;\n  const rawOutput = Buffer.from(binaryItem.data, 'base64').toString('utf8');\n\n  const localFiles = rawOutput.split('\\n')\n    .map(line => line.trim())\n    .filter(line => line.length > 0)\n    .map(path => {\n        return {\n            path: path,\n            name: path.split('/').pop()\n        };\n    });\n\n  // Parse Notion Pages\n  const notionPages = $items(\"Get Notion Pages\");\n  const notionMap = new Map();\n\n  notionPages.forEach(item => {\n    const props = item.json.properties;\n    const relId = props.RelativeID?.rich_text?.[0]?.plain_text;\n    if (relId) notionMap.set(relId, item.json.id);\n  });\n\n  // Compare\n  const results = [];\n  const WATCH_DIR = '/data'; // Adjust based on mount\n\n  // 1. Check Local Files (Create or Update)\n  const localIds = new Set();\n\n  localFiles.forEach(file => {\n    // Calculate Relative ID\n    // Assuming path starts with /data\n    let relId = file.path;\n    if (relId.startsWith(WATCH_DIR)) {\n        relId = relId.slice(WATCH_DIR.length);\n    }\n    if (relId.startsWith('/')) relId = relId.slice(1);\n    \n    localIds.add(relId);\n    \n    const action = notionMap.has(relId) ? 'update' : 'create';\n    const pageId = notionMap.get(relId);\n    \n    results.push({\n      json: {\n        action,\n        filename: file.name,\n        relativePath: relId,\n        pageId,\n        magicLink: 'file://' + file.path\n      }\n    });\n  });\n\n  // 2. Check Missing (Delete)\n  notionMap.forEach((pageId, relId) => {\n    if (!localIds.has(relId)) {\n      results.push({\n        json: {\n          action: 'delete',\n          relativePath: relId,\n          pageId\n        }\n      });\n    }\n  });\n\n  return results;\n} catch (error) {\n  return [{ json: { error: error.message } }];\n}"
       },
       "name": "Compare Logic",
       "type": "n8n-nodes-base.code",
       "typeVersion": 1,
-      "position": [680, 300]
+      "position": [900, 300]
     },
     {
       "parameters": {
@@ -64,7 +83,7 @@
       "name": "Switch Action",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
-      "position": [900, 300]
+      "position": [1100, 300]
     },
     {
       "parameters": {
@@ -90,7 +109,7 @@
       "name": "Create Page",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2,
-      "position": [1150, 100]
+      "position": [1350, 100]
     },
     {
       "parameters": {
@@ -113,7 +132,7 @@
       "name": "Update Page",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2,
-      "position": [1150, 300]
+      "position": [1350, 300]
     },
     {
       "parameters": {
@@ -124,7 +143,7 @@
       "name": "Archive Page",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2,
-      "position": [1150, 500]
+      "position": [1350, 500]
     }
   ],
   "connections": {
@@ -148,7 +167,7 @@
       "main": [
         [
           {
-            "node": "Compare Logic",
+            "node": "Merge",
             "type": "main",
             "index": 0
           }
@@ -159,9 +178,31 @@
       "main": [
         [
           {
-            "node": "Compare Logic",
+            "node": "Read File List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read File List": {
+      "main": [
+        [
+          {
+            "node": "Merge",
             "type": "main",
             "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Compare Logic",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
