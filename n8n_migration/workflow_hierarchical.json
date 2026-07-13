@@ -1,0 +1,300 @@
+{
+  "name": "SantiFS - Hierarchical Sync (Sub-items)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "command": "find /data -type f -not -path '*/.*' -not -path '*/node_modules/*' > /home/node/filelist.txt"
+      },
+      "name": "Scan Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [300, 400]
+    },
+    {
+      "parameters": {
+        "filePath": "/home/node/filelist.txt",
+        "dataPropertyName": "data"
+      },
+      "name": "Read File List",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": "YOUR_DATABASE_ID_HERE",
+        "simple": false,
+        "returnAll": true
+      },
+      "name": "Get Notion Pages (Initial)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [300, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ANALYZE FOLDERS\n// Extracts unique directory paths from the file list and checks if they exist in Notion\n\n// 1. Get Local File Paths\nlet filePaths = [];\ntry {\n    const binaryData = $items(\"Read File List\")[0].binary.data;\n    const b64 = binaryData.data || binaryData;\n    const rawOutput = Buffer.from(b64, 'base64').toString('utf8');\n    filePaths = rawOutput.split('\\n').map(l => l.trim()).filter(l => l.length > 0);\n} catch (e) { return []; }\n\n// 2. Get Existing Notion Pages (Map RelativeID -> PageID)\nconst notionMap = new Map();\n$items(\"Get Notion Pages (Initial)\").forEach(item => {\n    const rid = item.json.properties.RelativeID?.rich_text?.[0]?.plain_text;\n    if (rid) notionMap.set(rid, item.json.id);\n});\n\n// 3. Identify Missing Folders\nconst foldersToCreate = new Set();\nconst WATCH_DIR = '/data';\n\nfilePaths.forEach(fullPath => {\n    // Normalize path\n    let relPath = fullPath;\n    if (relPath.startsWith(WATCH_DIR)) relPath = relPath.slice(WATCH_DIR.length);\n    if (relPath.startsWith('/')) relPath = relPath.slice(1);\n    \n    // Get directory part (e.g. 'A/B' from 'A/B/file.txt')\n    const parts = relPath.split('/');\n    parts.pop(); // Remove filename\n    \n    // Generate all parent paths (A, A/B)\n    let currentPath = '';\n    parts.forEach(part => {\n        currentPath = currentPath ? `${currentPath}/${part}` : part;\n        if (!notionMap.has(currentPath)) {\n            foldersToCreate.add(currentPath);\n        }\n    });\n});\n\n// Output objects for creation\nreturn Array.from(foldersToCreate).map(folderPath => ({\n    json: {\n        name: folderPath.split('/').pop(),\n        relativePath: folderPath,\n        type: 'Folder'\n    }\n}));"
+      },
+      "name": "Calculate Missing Folders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": "YOUR_DATABASE_ID_HERE",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{$json.name}}"
+            },
+            {
+              "key": "RelativeID|rich_text",
+              "textContent": "={{$json.relativePath}}"
+            },
+            {
+              "key": "Type|select",
+              "select": "Folder"
+            }
+          ]
+        }
+      },
+      "name": "Create Folders",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [850, 200],
+      "notes": "Creates missing folder pages first"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": "YOUR_DATABASE_ID_HERE",
+        "simple": false,
+        "returnAll": true
+      },
+      "name": "Get Notion Pages (Refresh)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "notes": "Refresh to get IDs of new folders"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ANALYZE FILES & LINK PARENTS\n\n// 1. Get Local Files again\nlet localFiles = [];\ntry {\n    const binaryData = $items(\"Read File List\")[0].binary.data;\n    const b64 = binaryData.data || binaryData;\n    const rawOutput = Buffer.from(b64, 'base64').toString('utf8');\n    localFiles = rawOutput.split('\\n').map(l => l.trim()).filter(l => l.length > 0);\n} catch (e) {}\n\n// 2. Get ALL Notion Pages (including new folders)\nconst notionMap = new Map();\n$items(\"Get Notion Pages (Refresh)\").forEach(item => {\n    const rid = item.json.properties.RelativeID?.rich_text?.[0]?.plain_text;\n    if (rid) notionMap.set(rid, item.json.id);\n});\n\n// 3. Prepare File Actions\nconst results = [];\nconst WATCH_DIR = '/data';\n\nlocalFiles.forEach(fullPath => {\n    let relPath = fullPath;\n    if (relPath.startsWith(WATCH_DIR)) relPath = relPath.slice(WATCH_DIR.length);\n    if (relPath.startsWith('/')) relPath = relPath.slice(1);\n    \n    const filename = relPath.split('/').pop();\n    const parentPath = relPath.split('/').slice(0, -1).join('/');\n    \n    const parentId = notionMap.get(parentPath) || null;\n    const pageId = notionMap.get(relPath);\n    const action = pageId ? 'update' : 'create';\n    \n    results.push({\n        json: {\n            action,\n            filename,\n            relativePath: relPath,\n            pageId,\n            parentId,\n            magicLink: 'file://' + fullPath\n        }\n    });\n});\n\nreturn results;"
+      },
+      "name": "Calculate Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$json.action}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "create",
+              "output": 0
+            },
+            {
+              "value2": "update",
+              "output": 1
+            }
+          ]
+        }
+      },
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": "YOUR_DATABASE_ID_HERE",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{$json.filename}}"
+            },
+            {
+              "key": "RelativeID|rich_text",
+              "textContent": "={{$json.relativePath}}"
+            },
+            {
+              "key": "MagicLink|url",
+              "url": "={{$json.magicLink || null}}"
+            },
+            {
+              "key": "Parent item|relation",
+              "relation": "={{$json.parentId ? [$json.parentId] : []}}"
+            }
+          ]
+        }
+      },
+      "name": "Create File",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1650, 200]
+    },
+    {
+      "parameters": {
+        "resource": "page",
+        "operation": "update",
+        "pageId": "={{$json.pageId}}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{$json.filename}}"
+            },
+            {
+              "key": "MagicLink|url",
+              "url": "={{$json.magicLink || null}}"
+            },
+            {
+              "key": "Parent item|relation",
+              "relation": "={{$json.parentId ? [$json.parentId] : []}}"
+            }
+          ]
+        }
+      },
+      "name": "Update File",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1650, 400]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Scan Files",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Notion Pages (Initial)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan Files": {
+      "main": [
+        [
+          {
+            "node": "Read File List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read File List": {
+      "main": [
+        [
+          {
+            "node": "Calculate Missing Folders",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Notion Pages (Initial)": {
+      "main": [
+        [
+          {
+            "node": "Calculate Missing Folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Missing Folders": {
+      "main": [
+        [
+          {
+            "node": "Create Folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Folders": {
+      "main": [
+        [
+          {
+            "node": "Get Notion Pages (Refresh)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Notion Pages (Refresh)": {
+      "main": [
+        [
+          {
+            "node": "Calculate Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Files": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "Create File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
