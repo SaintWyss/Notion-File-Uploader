@@ -1,4 +1,7 @@
-# Notion File Uploader
+<h1 align="center">Notion-File-Uploader</h1>
+
+<p align="center"><strong>Sincronización de archivos locales con Notion.</strong><br/>Python · Notion API · Docker</p>
+
 
 A robust, Dockerized tool that mirrors your local filesystem structure into a Notion Database. It creates a "Digital Twin" of your hard drive in Notion, allowing you to search and organize your local files using Notion's powerful interface.
 
