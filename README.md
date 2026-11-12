@@ -8,6 +8,12 @@ A robust, Dockerized tool that mirrors your local filesystem structure into a No
 ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-green.svg)
 
+## Technology and design
+
+The project uses **Python**, the **Notion API**, `notion-client`, `httpx` and `python-dotenv`. A Docker image packages the command-line sync. The alternative workflows in `n8n_migration/` are a separate low-code path.
+
+The synchronizer reads local file metadata, coordinates the comparison with Notion and delegates remote operations to the Notion adapter. Domain models and interfaces, application services and infrastructure adapters live in separate modules; see [Architecture](#-architecture). Local links refer to the originating filesystem and are not uploaded file backups.
+
 ## Before running
 
 The sync changes the connected Notion database and marks entries missing locally as archived. If `WATCH_DIR` is unavailable, incorrectly mounted, or an item fails to process, existing entries may be treated as missing. Check the path and mount, back up the database, and start with a disposable test database.
