@@ -8,6 +8,12 @@ A robust, Dockerized tool that mirrors your local filesystem structure into a No
 ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-green.svg)
 
+## Before running
+
+The sync changes the connected Notion database and marks entries missing locally as archived. If `WATCH_DIR` is unavailable, incorrectly mounted, or an item fails to process, existing entries may be treated as missing. Check the path and mount, back up the database, and start with a disposable test database.
+
+This tool indexes file metadata and local links; it is not a backup of file contents. Local `file://` links depend on the machine and Notion client.
+
 ## ✨ Features
 
 - **One-Way Sync:** Scans your local folder and updates Notion.
