@@ -5,7 +5,6 @@
 
 A robust, Dockerized tool that mirrors your local filesystem structure into a Notion Database. It creates a "Digital Twin" of your hard drive in Notion, allowing you to search and organize your local files using Notion's powerful interface.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-green.svg)
 
@@ -122,4 +121,4 @@ This repository includes a `n8n_migration/` folder with JSON workflows to replic
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+The README previously stated an MIT license, but the repository does not currently contain a license file. The applicable terms should be clarified by the author before reuse or redistribution.
